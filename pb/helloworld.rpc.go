@@ -4,7 +4,10 @@ package pb
 
 import (
 	"MyRPC/core/server"
+	"MyRPC/core/internel"
 	"fmt"
+	"context"
+	"MyRPC/core/client"
 )
 
 // 具体方法接口
@@ -56,3 +59,52 @@ func RegisterHelloServer(s *server.Server, svr interface{}) error {
 	}
 	return nil
 }
+
+
+// 客户端代理接口
+type HelloClientProxy interface  {
+	// TODO 这个opt预留，看看后续service是否需要
+	Hello(ctx context.Context, in *HelloRequest, opts ...client.Option) (*HelloReply, error)
+}
+
+
+// 客户端代理实现
+type HelloClientProxyImpl struct {
+	client client.Client
+	opts   []client.Option
+}
+
+// 创建客户端代理
+func NewHelloClientProxy(opts ...client.Option) HelloClientProxy {
+	return &HelloClientProxyImpl{
+		client: client.DefaultClient,
+		opts:   opts,
+	}
+}
+
+// 实现Hello方法
+func (c *HelloClientProxyImpl) Hello(ctx context.Context, req *HelloRequest, opts ...client.Option) (*HelloReply, error) {
+	// 创建一个msg结构，存储service相关的数据，如serviceName等，并放到context中
+	// 用msg结构可以避免在context中太多withValue传递过多的参数
+	// TODO msg可以池化处理，且若context中有了msg，可以直接置换msg
+	msg := internel.NewMsg()
+	msg.WithServiceName("helloworld")
+	msg.WithMethodName("Hello")
+	ctx = context.WithValue(ctx, internel.ContextMsgKey, msg)
+
+
+	rsp := &HelloReply{}
+	// 这里需要将opts添加前面newProxy时传入的opts
+	newOpts := append(c.opts, opts...)
+	err := c.client.Invoke(ctx, req, rsp, newOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return rsp, nil
+}
+
+
+
+
+
+
