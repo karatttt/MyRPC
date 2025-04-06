@@ -27,7 +27,7 @@ func (c *client) Invoke(ctx context.Context, reqBody interface{}, rspBody interf
 	}
 
 	// 发送请求
-	rspBody, err := opts.ClientTransport.Send(ctx, reqBody, opts.ClientTransportOption)
+	err := opts.ClientTransport.Send(ctx, reqBody, rspBody, opts.ClientTransportOption)
 	if err != nil {
 		return err
 	}

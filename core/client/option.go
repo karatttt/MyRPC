@@ -4,9 +4,10 @@ import (
 	"MyRPC/core/transport"
 	"MyRPC/core/codec"
 )
-
+// 赋值options
 type Option func(*Options)
 
+// 客户端的option，在请求发送出去后生命周期结束
 type Options struct {
 	target string
 	// 这个里面的配置实际上和该options相似，但是如果直接在transport中复用这里的Option去使用其属性时，会导致循环依赖
@@ -26,7 +27,7 @@ func NewOptions() *Options {
 		ClientTransportOption: &transport.ClientTransportOption{},
 		// transport用默认值，TODO 这里的trans实际上也可以用map映射来复用，避免创建多个实例
 		ClientTransport: transport.DefaultClientTransport,
-		Codec: codec.DefaultCodec,
+		Codec: codec.DefaultClientCodec,
 	}
 }
 

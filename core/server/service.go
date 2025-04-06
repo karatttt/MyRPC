@@ -2,9 +2,9 @@ package server
 
 import (
 	"MyRPC/core/transport"
+	"MyRPC/core/internel"
 	"context"
 	"fmt"
-	"encoding/json"
 )
 
 // 定义接口，提供一些服务的注册和开启服务的功能
@@ -19,8 +19,8 @@ type Service interface {
 
 // 服务的各个属性
 type service struct {
-	Handler   map[string]Handler
-	Transport *transport.ServerTransport
+	handler   map[string]Handler
+	opts      *Options
 }
 
 type Handler func(req []byte) (rsp []byte, err error)
@@ -42,7 +42,7 @@ type MethodDesc struct {
 func (s *service) Register(serviceDesc *ServiceDesc, service interface{}) error {
 
 	// 初始化Transport
-	s.Transport = &transport.ServerTransport{}
+	s.opts.Transport = transport.DefaultServerTransport
 
 	// TODO 现在只做了绑定方法，service后面可能也要绑定，以及router如何理解
 	s.registerMethods(serviceDesc.Methods, service)
@@ -53,10 +53,10 @@ func (s *service) Register(serviceDesc *ServiceDesc, service interface{}) error 
 // 注册普通方法
 func (s *service) registerMethods(methods []MethodDesc, serviceImpl interface{}) error {
 	for _, method := range methods {
-		if _, exists := s.Handler[method.MethodName]; exists {
+		if _, exists := s.handler[method.MethodName]; exists {
 			return fmt.Errorf("duplicate method name: %s", method.MethodName)
 		}
-		s.Handler[method.MethodName] = func(req []byte) (rsp []byte, err error) {
+		s.handler[method.MethodName] = func(req []byte) (rsp []byte, err error) {
 			if fn, ok := method.Func.(func(svr interface{}, req []byte) (rsp []byte, err error)); ok {
 				// 这里调用的就是rpc.go里面的实际的handler方法
 				return fn(serviceImpl, req)
@@ -71,8 +71,8 @@ func (s *service) Serve(address string) error {
 	fmt.Printf("Server is listening on %s\n", address)
 
 	// 将service作为Handler传入transport，后续接收到请求，会调用service的Handle方法
-	s.Transport.ConnHandler = s
-	err := s.Transport.ListenAndServe(context.Background(), "tcp", address)
+	s.opts.Transport.RegisterHandler(s)
+	err := s.opts.Transport.ListenAndServe(context.Background(), "tcp", address)
 	if err != nil {
 		return fmt.Errorf("failed to listen: %v", err)
 	}
@@ -81,17 +81,20 @@ func (s *service) Serve(address string) error {
 
 // 实现Handler接口，后续需要根据请求的methodName，然后调用这个service的Handler
 // 里面的逻辑是：匹配service的HandlerMap是否有对应的methodName，如果有，则调用里面的Handler
-func (s *service) Handle(req []byte) (rsp []byte, err error) {
-	
-	// 获取请求的methodName
-	request := &transport.Request{}
-	err = json.Unmarshal(req, request)
+func (s *service) Handle(ctx context.Context, frame []byte) (rsp []byte, err error) {
+	// 解码帧, 并为msg赋值service和method的相关信息
+	reqData, err := s.opts.Codec.Decode(ctx, frame)
 	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal request: %v", err)
+		return nil, fmt.Errorf("failed to decode frame: %v", err)
 	}
+
+	// 获取msg
+	msg := internel.GetMessage(ctx)
+	methodName := msg.GetMethodName()
+
 	// 获取Handler执行结果
-	response, err := s.Handler[request.Method](request.Body)
-	if err != nil {
+	response, err := s.handler[methodName](reqData)
+	if err != nil {	
 		return nil, fmt.Errorf("failed to handle request: %v", err)
 	}
 	return response, nil

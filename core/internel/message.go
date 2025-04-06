@@ -1,5 +1,7 @@
 package internel	
 
+import "context"
+
 type Message interface{
 	GetServiceName() string
 	GetMethodName() string
@@ -8,7 +10,7 @@ type Message interface{
 } 
 
 // 为什么要有msg这个结构，目前的设计是msg是跟service相关数据，而opts是每一次调用时，client传入的参数，相对来说后者更个性，前者更通用
-type Msg struct {
+type msg struct {
 	ServiceName string
 	MethodName  string
 }
@@ -20,23 +22,32 @@ const (
 	ContextMsgKey ContextKey = ContextKey("MyRPC")
 )
 
-
-func NewMsg() *Msg {
-	return &Msg{}
+// Message returns the message of context.
+func GetMessage(ctx context.Context) Message {
+	val := ctx.Value(ContextMsgKey)
+	m, ok := val.(*msg)
+	if !ok {
+		return &msg{}
+	}
+	return m
 }
 
-func (m *Msg) GetServiceName() string {
+func NewMsg() *msg {
+	return &msg{}
+}
+
+func (m *msg) GetServiceName() string {
 	return m.ServiceName
 }
 
-func (m *Msg) GetMethodName() string {
+func (m *msg) GetMethodName() string {
 	return m.MethodName
 }
 
-func (m *Msg) WithServiceName(serviceName string) {
+func (m *msg) WithServiceName(serviceName string) {
 	m.ServiceName = serviceName
 }
 
-func (m *Msg) WithMethodName(methodName string) {
+func (m *msg) WithMethodName(methodName string) {
 	m.MethodName = methodName
 }

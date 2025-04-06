@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"context"
 	"MyRPC/core/client"
+	"MyRPC/core/codec"
 )
 
 // 具体方法接口
@@ -26,10 +27,13 @@ func HelloServer_Hello_Handler(srv interface{}, req []byte) (interface{}, error)
 		return nil, fmt.Errorf("HelloServer_Hello_Handler: %v", "type assertion failed")
 	}
 	// 调用HelloServer的Hello方法
-
-	// TODO 这里的req先是一个HelloRequest的实例，实际使用中应该是从客户端传过来的请求
-	reply, err := helloServer.Hello(&HelloRequest{
-		Msg: "Hello World"})
+	// 将req反序列化
+	reqBody := &HelloRequest{}
+	err := codec.Unmarshal(req, reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("HelloServer_Hello_Handler: %v", err)
+	}
+	reply, err := helloServer.Hello(reqBody)
 	
 	if err != nil {
 		fmt.Printf("HelloServer_Hello_Handler: %v", err)

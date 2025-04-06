@@ -5,21 +5,22 @@ import (
 	"fmt"
 	"net"
 	"encoding/json"
+	"MyRPC/core/codec"
 )
 
-type Transport interface {
-	ListenAndServe(ctx context.Context, network, address string) error
-}
-
-// 定义一个Handler接口，service实现了这个接口
-type Handler interface {
-	Handle(req []byte) (rsp []byte, err error)
-}
 
 
-type ServerTransport struct {
+
+// 实现ServerTransport接口
+type serverTransport struct {
 	// 这个就是Service
 	ConnHandler Handler
+}
+
+var DefaultServerTransport = NewServerTransport()
+
+func NewServerTransport() ServerTransport {
+	return &serverTransport{}
 }
 
 type Request struct {
@@ -29,7 +30,7 @@ type Request struct {
 
 
 // ListenAndServe 监听并处理 TCP 连接
-func (t *ServerTransport)ListenAndServe(ctx context.Context, network, address string) error {
+func (t *serverTransport)ListenAndServe(ctx context.Context, network, address string) error {
 
 	// TODO 如果前面的service已经listen过了，这里实际上需要复用
 	ln, err := net.Listen(network, address)
@@ -47,7 +48,7 @@ func (t *ServerTransport)ListenAndServe(ctx context.Context, network, address st
 }
 
 // serveTCP 处理 TCP 连接
-func (t *ServerTransport) serveTCP(ctx context.Context, ln net.Listener) error {
+func (t *serverTransport) serveTCP(ctx context.Context, ln net.Listener) error {
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
@@ -60,40 +61,23 @@ func (t *ServerTransport) serveTCP(ctx context.Context, ln net.Listener) error {
 			continue
 		}
 		
-		go t.handleConnection(conn)
+		go t.handleConnection(ctx, conn)
 	}
 }
 
 // handleConnection 处理单个连接
-func  (t *ServerTransport) handleConnection(conn net.Conn) {
+func  (t *serverTransport) handleConnection(ctx context.Context, conn net.Conn) {
 	defer conn.Close()
 	fmt.Println("New connection from", conn.RemoteAddr())
+	// 读取帧
+	frame, err := codec.ReadFrame(conn)
+	if err != nil {
+		fmt.Println("read frame error:", err)
+		return
+	}
 	
-	//读取请求头
-	header := make([]byte, 1024)
-	n, err := conn.Read(header)
-	if err != nil {
-		fmt.Println("read header error:", err)
-		return
-	}
-
-	// 读取请求体
-	body := make([]byte, n)
-	n, err = conn.Read(body)
-	if err != nil {
-		fmt.Println("read body error:", err)
-		return
-	}
-
-	// 获取请求体中的methodName字段的值
-	request := &Request{}
-	err = json.Unmarshal(body, request)
-	if err != nil {
-		fmt.Println("unmarshal request error:", err)
-		return
-	}
-	// 获取Handler执行结果
-	response, err := t.ConnHandler.Handle(request.Body)
+	// 调用service的Handler执行结果
+	response, err := t.ConnHandler.Handle(ctx, frame)
 	if err != nil {
 		fmt.Println("handle error:", err)
 		return
@@ -107,3 +91,9 @@ func  (t *ServerTransport) handleConnection(conn net.Conn) {
 	}
 	conn.Write(responseBody)	
 }
+
+// 将Handler注册到ServerTransport中
+func (t *serverTransport) RegisterHandler(handler Handler) {
+	t.ConnHandler = handler
+}
+
