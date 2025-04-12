@@ -2,6 +2,9 @@ package server
 
 import (
 	"fmt"
+	"io/ioutil"
+
+	"gopkg.in/yaml.v2"
 )
 
 type Server struct {
@@ -12,10 +15,47 @@ type Server struct {
 func NewServer() *Server {
 	// 1. 创建一个Server实例
 	server := &Server{
-		services : make(map[string]Service),
+		services: make(map[string]Service),
 	}
+
+	// 2. 读取配置文件
+	config, err := loadConfig("./rpc.yaml")
+	if err != nil {
+		fmt.Print("读取配置文件出错")
+	}
+
+	// 3. 创建服务
+	for _, svc := range config.Server.Service {
+		// 创建服务
+		service := NewService(svc.Name, WithAddress(fmt.Sprintf("%s:%d", svc.IP, svc.Port)))
+
+		// 添加到服务映射
+		server.services[svc.Name] = service
+	}
+
 	return server
 }
+
+// loadConfig loads the server configuration from a YAML file
+func loadConfig(configPath string) (*ServerConfig, error) {
+	// 读取配置文件
+	data, err := ioutil.ReadFile(configPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read config file: %v", err)
+	}
+
+	// 解析YAML
+	var config ServerConfig
+	err = yaml.Unmarshal(data, &config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse config file: %v", err)
+	}
+
+	return &config, nil
+}
+
+
+
 
 func (s *Server)Register(serviceDesc *ServiceDesc, svr interface{}) error{
 	// 这里会注册到所有的service中，每一个service都有完整的方法路由（包括所有service的）

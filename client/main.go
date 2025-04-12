@@ -1,17 +1,23 @@
 package main
 
 import (
-	"context"
-	"MyRPC/pb"
 	"MyRPC/core/client"
+	"MyRPC/pb"
+	"context"
 	"fmt"
 )
 
 func main() {
-	c := pb.NewHelloClientProxy(client.WithTarget("ip://127.0.0.1:8000"))
+	c := pb.NewHelloClientProxy(client.WithTarget("127.0.0.1:8000"))
+	if c == nil {
+		fmt.Println("Failed to create client")
+		return
+	}
+
 	rsp, err := c.Hello(context.Background(), &pb.HelloRequest{Msg: "world"})
 	if err != nil {
-		fmt.Println(err)
+		fmt.Println("RPC call error:", err)
+		return
 	}
-	fmt.Println(rsp.Msg)
+	fmt.Println("Response:", rsp.Msg)
 }

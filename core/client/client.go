@@ -2,7 +2,7 @@ package client
 
 import (
 	"context"
-
+	"errors"
 )
 
 type Client interface {
@@ -27,6 +27,9 @@ func (c *client) Invoke(ctx context.Context, reqBody interface{}, rspBody interf
 	}
 
 	// 发送请求
+	if opts.ClientTransport == nil {
+		return errors.New("clientTransport is nil")
+	}
 	err := opts.ClientTransport.Send(ctx, reqBody, rspBody, opts.ClientTransportOption)
 	if err != nil {
 		return err

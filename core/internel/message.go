@@ -23,13 +23,14 @@ const (
 )
 
 // Message returns the message of context.
-func GetMessage(ctx context.Context) Message {
+func GetMessage(ctx context.Context) (context.Context, Message) {
 	val := ctx.Value(ContextMsgKey)
-	m, ok := val.(*msg)
-	if !ok {
-		return &msg{}
+	if m, ok := val.(*msg); ok {
+		return ctx, m
 	}
-	return m
+	newMsg := &msg{}
+	newCtx := context.WithValue(ctx, ContextMsgKey, newMsg)
+	return newCtx, newMsg
 }
 
 func NewMsg() *msg {

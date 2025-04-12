@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"MyRPC/core/codec"
+	"MyRPC/core/internel"
 )
 
 
@@ -28,6 +29,8 @@ func (c *clientTransport) Send(ctx context.Context, reqBody interface{}, rspBody
 	if err != nil {
 		return err
 	}
+
+	
 	defer conn.Close()
 
 	// reqbody序列化
@@ -53,8 +56,10 @@ func (c *clientTransport) Send(ctx context.Context, reqBody interface{}, rspBody
 	if err != nil {
 		return err
 	}
+	// 获取msg
+	ctx, msg := internel.GetMessage(ctx)
 	// rspDataBuf解码，提取响应体数据
-	rspData, err := opt.Codec.Decode(ctx, rspDataBuf)
+	rspData, err := opt.Codec.Decode(msg, rspDataBuf)
 	if err != nil {
 		return err
 	}

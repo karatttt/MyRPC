@@ -24,7 +24,9 @@ var DefaultOptions = NewOptions()
 func NewOptions() *Options {
 	
 	return &Options{
-		ClientTransportOption: &transport.ClientTransportOption{},
+		ClientTransportOption: &transport.ClientTransportOption{
+			Codec: codec.DefaultClientCodec,
+		},
 		// transport用默认值，TODO 这里的trans实际上也可以用map映射来复用，避免创建多个实例
 		ClientTransport: transport.DefaultClientTransport,
 		Codec: codec.DefaultClientCodec,

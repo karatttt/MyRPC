@@ -1,17 +1,18 @@
 package server
 
 import (
-	"MyRPC/core/transport"
 	"MyRPC/core/codec"
+	"MyRPC/core/transport"
 )
-
 
 type Option func(*Options)
 
 // 服务端的option，在服务结束后生命周期结束
 type Options struct {
-	Transport transport.ServerTransport
-	Codec codec.Codec
+	ServerName string
+	Address    string
+	Transport  transport.ServerTransport
+	Codec      codec.Codec
 }
 
 var DefaultOptions = NewOptions()
@@ -26,5 +27,12 @@ func NewOptions() *Options {
 func WithTransport(transport transport.ServerTransport) Option {
 	return func(o *Options) {
 		o.Transport = transport
+	}
+}
+
+// WithAddress sets the server address
+func WithAddress(address string) Option {
+	return func(o *Options) {
+		o.Address = address
 	}
 }

@@ -1,8 +1,9 @@
 package main
 
 import (
-	 "MyRPC/pb"
-	 "MyRPC/core/server"
+	"MyRPC/core/server"
+	"MyRPC/pb"
+	"fmt"
 )
 
 func main() {
@@ -13,9 +14,11 @@ func main() {
 	pb.RegisterHelloServer(s, &HelloServerImpl{})
 
 	// Start the server on port 50051
-	if err := s.Serve(":50051"); err != nil {
+	if err := s.Serve(":8000"); err != nil {
 		panic(err)
 	}
+
+	fmt.Print("启动成功")
 }
 
 

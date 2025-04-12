@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net"
-	"encoding/json"
 	"MyRPC/core/codec"
 )
 
@@ -49,6 +48,7 @@ func (t *serverTransport)ListenAndServe(ctx context.Context, network, address st
 
 // serveTCP 处理 TCP 连接
 func (t *serverTransport) serveTCP(ctx context.Context, ln net.Listener) error {
+	fmt.Print("开始监听TCP连接")
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
@@ -83,13 +83,8 @@ func  (t *serverTransport) handleConnection(ctx context.Context, conn net.Conn) 
 		return
 	}
 
-	// 发送响应
-	responseBody, err := json.Marshal(response)
-	if err != nil {
-		fmt.Println("marshal response error:", err)
-		return
-	}
-	conn.Write(responseBody)	
+	// 发送响应，此时已经是完整帧
+	conn.Write(response)	
 }
 
 // 将Handler注册到ServerTransport中
