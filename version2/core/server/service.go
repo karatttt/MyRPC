@@ -16,12 +16,18 @@ type Service interface {
 
 	// Serve starts the server and listens for incoming connections.
 	Serve(address string) error
+
+	// Close closes the server and stops listening for incoming connections.
+	Close() error
 }
 
 // 服务的各个属性
 type service struct {
 	handler map[string]Handler
 	opts    *Options
+	ctx     context.Context
+	cancel	context.CancelFunc
+
 }
 
 type Handler func(req []byte) (rsp interface{}, err error)
@@ -116,11 +122,13 @@ func (s *service) Handle(ctx context.Context, frame []byte) (rsp []byte, err err
 func NewService(serviceName string, opts ...Option) Service {
 	s := &service{
 		handler: make(map[string]Handler),
-		opts:    NewOptions(),
+		opts:    DefaultOptions,
 	}
 
 	// Set the service name
 	s.opts.ServerName = serviceName
+	// 设置context，用于后续创建子context，以及监听关闭
+	s.ctx, s.cancel = context.WithCancel(context.Background())
 
 	// Apply options
 	for _, opt := range opts {
@@ -130,12 +138,7 @@ func NewService(serviceName string, opts ...Option) Service {
 	return s
 }
 
-// WithHandler adds a handler to the service
-func WithHandler(methodName string, handler Handler) Option {
-	return func(o *Options) {
-		// This will be applied when the service is registered
-		// We don't have a Handlers field in Options, so we'll need to handle this differently
-		// For now, we'll just set the handler directly in the service
-		// This is a bit of a hack, but it works for now
-	}
+func (s *service) Close() error {
+	s.cancel()
+	return nil
 }

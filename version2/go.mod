@@ -4,4 +4,9 @@ go 1.24.0
 
 require google.golang.org/protobuf v1.33.0
 
-require gopkg.in/yaml.v2 v2.4.0 // indirect
+require golang.org/x/sync v0.11.0 // indirect
+
+require (
+	github.com/panjf2000/ants/v2 v2.11.3
+	gopkg.in/yaml.v2 v2.4.0 // indirect
+)

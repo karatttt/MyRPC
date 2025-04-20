@@ -214,7 +214,16 @@ func ReadFrame(conn net.Conn) ([]byte, error) {
 	headerBuf := make([]byte, HeaderLength)
 	n, err := io.ReadFull(buf, headerBuf)
 	if err != nil {
-		return nil, fmt.Errorf("read header error: %v, read %d bytes", err, n)
+		if err == io.EOF {
+			fmt.Printf("客户端没有发送任何数据，连接就关闭了")
+			return nil, err
+		} else if err == io.ErrUnexpectedEOF {
+			fmt.Printf("收到部分数据 %d 字节，连接就断开了", n)
+			return nil, err
+		} else {
+			fmt.Printf("读取异常，err: %v", err)
+			return nil, err
+		}
 	}
 
 	// 正确解析所有字段
@@ -238,6 +247,15 @@ func ReadFrame(conn net.Conn) ([]byte, error) {
 	frameBody := make([]byte, header.ProtocolLength+header.BodyLength)
 	_, err = io.ReadFull(buf, frameBody)
 	if err != nil {
+		// 如果是EOF，说明客户端在发送消息体时关闭了连接
+		if err == io.EOF {
+			return nil, io.EOF
+		}
+		// 如果是其他错误，比如连接被重置，返回原始错误
+		if e, ok := err.(net.Error); ok {
+			return nil, e
+		}
+		// 其他错误，包装错误信息
 		return nil, fmt.Errorf("read body error: %v", err)
 	}
 

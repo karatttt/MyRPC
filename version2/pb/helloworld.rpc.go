@@ -67,7 +67,6 @@ func RegisterHelloServer(s *server.Server, svr interface{}) error {
 
 // 客户端代理接口
 type HelloClientProxy interface  {
-	// TODO 这个opt预留，看看后续service是否需要
 	Hello(ctx context.Context, in *HelloRequest, opts ...client.Option) (*HelloReply, error)
 }
 
@@ -90,7 +89,6 @@ func NewHelloClientProxy(opts ...client.Option) HelloClientProxy {
 func (c *HelloClientProxyImpl) Hello(ctx context.Context, req *HelloRequest, opts ...client.Option) (*HelloReply, error) {
 	// 创建一个msg结构，存储service相关的数据，如serviceName等，并放到context中
 	// 用msg结构可以避免在context中太多withValue传递过多的参数
-	// TODO msg可以池化处理，且若context中有了msg，可以直接置换msg
 	msg := internel.NewMsg()
 	msg.WithServiceName("helloworld")
 	msg.WithMethodName("Hello")

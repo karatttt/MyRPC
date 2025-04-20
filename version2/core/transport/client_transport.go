@@ -1,14 +1,13 @@
 package transport
 
 import (
+	"MyRPC/core/codec"
+	"MyRPC/core/internel"
+	"MyRPC/core/pool"
 	"context"
 	"fmt"
 	"net"
-	"MyRPC/core/codec"
-	"MyRPC/core/internel"
 )
-
-
 
 type clientTransport struct{}
 
@@ -20,18 +19,15 @@ func NewClientTransport() ClientTransport {
 	return &clientTransport{}
 }
 
-
 // 实现Send方法
 func (c *clientTransport) Send(ctx context.Context, reqBody interface{}, rspBody interface{}, opt *ClientTransportOption) error {
 	// 获取连接
-	// TODO 这里的连接后续可以优化从连接池获取
-	conn, err := net.Dial("tcp", opt.Address)
+	pool := pool.GetPoolManager().GetPool(opt.Address)
+	conn, err := pool.Get()
 	if err != nil {
 		return err
 	}
-
-	
-	defer conn.Close()
+	defer pool.Put(conn)
 
 	// reqbody序列化
 	reqData, err := codec.Marshal(reqBody)
@@ -65,7 +61,7 @@ func (c *clientTransport) Send(ctx context.Context, reqBody interface{}, rspBody
 	}
 
 	// 将rspData反序列化为rspBody
-    err = codec.Unmarshal(rspData, rspBody)
+	err = codec.Unmarshal(rspData, rspBody)
 	if err != nil {
 		return err
 	}
@@ -81,8 +77,6 @@ func (c *clientTransport) tcpWriteFrame(ctx context.Context, conn net.Conn, fram
 	}
 	return nil
 }
-
-
 
 func (c *clientTransport) tcpReadFrame(ctx context.Context, conn net.Conn) ([]byte, error) {
 	return codec.ReadFrame(conn)

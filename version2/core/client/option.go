@@ -12,6 +12,7 @@ type Options struct {
 	target string
 	// 这个里面的配置实际上和该options相似，但是如果直接在transport中复用这里的Option去使用其属性时，会导致循环依赖
 	// 当然也可以在send之前显示的new一个这样的结构，再拷贝
+	// 顺序是先创建opt，再创建transportOpt，再with属性
 	ClientTransportOption *transport.ClientTransportOption
 	// 这里使用接口，方便自定义transport
 	ClientTransport transport.ClientTransport

@@ -45,7 +45,6 @@ func (s *service) Register(serviceDesc *ServiceDesc, service interface{}) error 
 	// 初始化Transport
 	s.opts.Transport = transport.DefaultServerTransport
 
-	// TODO 现在只做了绑定方法，service后面可能也要绑定，以及router如何理解
 	s.registerMethods(serviceDesc.Methods, service)
 
 	return nil
@@ -130,12 +129,3 @@ func NewService(serviceName string, opts ...Option) Service {
 	return s
 }
 
-// WithHandler adds a handler to the service
-func WithHandler(methodName string, handler Handler) Option {
-	return func(o *Options) {
-		// This will be applied when the service is registered
-		// We don't have a Handlers field in Options, so we'll need to handle this differently
-		// For now, we'll just set the handler directly in the service
-		// This is a bit of a hack, but it works for now
-	}
-}

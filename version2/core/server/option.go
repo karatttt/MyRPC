@@ -2,6 +2,7 @@ package server
 
 import (
 	"MyRPC/core/codec"
+	"time"
 	"MyRPC/core/transport"
 )
 
@@ -13,6 +14,8 @@ type Options struct {
 	Address    string
 	Transport  transport.ServerTransport
 	Codec      codec.Codec
+	KeepAlivePeriod time.Duration 
+	IdleTimeout time.Duration
 }
 
 var DefaultOptions = NewOptions()
@@ -36,3 +39,18 @@ func WithAddress(address string) Option {
 		o.Address = address
 	}
 }
+
+func WithKeepAlivePeriod(time time.Duration) Option {
+	return func(o *Options){
+		o.KeepAlivePeriod = time
+		o.Transport.SetKeepAlivePeriod(time)
+	}
+}
+
+func WithIdleTimeout(time time.Duration) Option {
+	return func(o *Options) {
+		o.IdleTimeout = time
+		o.Transport.SetIdleTimeout(time)
+	}
+}
+

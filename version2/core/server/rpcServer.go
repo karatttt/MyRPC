@@ -3,13 +3,16 @@ package server
 import (
 	"fmt"
 	"io/ioutil"
+	"os"
+	"os/signal"
+	"syscall"
 
 	"gopkg.in/yaml.v2"
 )
 
 type Server struct {
-	 // key 是服务名，v是具体的服务
-	services map[string]Service 
+	// key 是服务名，v是具体的服务
+	services map[string]Service
 }
 
 func NewServer() *Server {
@@ -54,10 +57,7 @@ func loadConfig(configPath string) (*ServerConfig, error) {
 	return &config, nil
 }
 
-
-
-
-func (s *Server)Register(serviceDesc *ServiceDesc, svr interface{}) error{
+func (s *Server) Register(serviceDesc *ServiceDesc, svr interface{}) error {
 	// 这里会注册到所有的service中，每一个service都有完整的方法路由（包括所有service的）
 	for _, service := range s.services {
 		err := service.Register(serviceDesc, svr)
@@ -68,13 +68,20 @@ func (s *Server)Register(serviceDesc *ServiceDesc, svr interface{}) error{
 	return nil
 }
 
-func (s *Server)Serve(address string) error {
-	
+func (s *Server) Serve(address string) error {
+
 	// 调用每一个service的Serve方法
 	for _, service := range s.services {
 		service.Serve(address)
 	}
-	
-	return nil	
-}
 
+	// 监听关闭信号
+	signalCh := make(chan os.Signal, 1)
+	signal.Notify(signalCh, syscall.SIGINT, syscall.SIGTERM, syscall.SIGSEGV)
+	<-signalCh
+	for _, service := range s.services {
+		service.Close()
+	}
+
+	return nil
+}
