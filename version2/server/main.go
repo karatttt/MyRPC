@@ -14,7 +14,7 @@ func main() {
 	pb.RegisterHelloServer(s, &HelloServerImpl{})
 
 	// Start the server on port 50051
-	if err := s.Serve(":8000"); err != nil {
+	if err := s.Serve(":8001"); err != nil {
 		panic(err)
 	}
 

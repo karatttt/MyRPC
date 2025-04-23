@@ -27,7 +27,7 @@ func main() {
 
 	printMemStats("Before requests")
 
-	const N = 2
+	const N = 30000
 	start := time.Now()
 	success := 0
 

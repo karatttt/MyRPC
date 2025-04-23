@@ -12,7 +12,6 @@ import (
 var (
 	ErrPoolClosed    = errors.New("connection pool is closed")
 	ErrPoolExhausted = errors.New("connection pool exhausted")
-	ErrConnTimeout   = errors.New("connection timeout")
 )
 
 type PooledConn struct {
@@ -66,12 +65,9 @@ func (p *ConnPool) Get() (net.Conn, error) {
 	}
 
 	// 设置等待超时
-	var timer *time.Timer
+	var startWait time.Time
 	if p.maxWait > 0 {
-		timer = time.AfterFunc(p.maxWait, func() {
-			p.cond.Broadcast()
-		})
-		defer timer.Stop()
+		startWait = time.Now() // 记录开始等待时间
 	}
 
 	for {
@@ -124,17 +120,19 @@ func (p *ConnPool) Get() (net.Conn, error) {
 		if p.maxWait > 0 {
 			atomic.AddUint64(&p.stats.Timeouts, 1)
 			p.cond.Wait()
-			// 如果定时器触发了，说明是超时了
-			// 如果定时器没有触发，说明是Put方法的唤醒了，有空闲新连接，继续获取
-			if timer != nil && !timer.Stop() {
+
+			// 等待结束后判断是否超时
+			if time.Since(startWait) >= p.maxWait {
+				// 超时了
 				p.mu.Unlock()
-				return nil, ErrConnTimeout
+				return nil, errors.New("连接池获取连接超时，超时时间: " + time.Since(startWait).String())
 			}
 		} else {
 			p.cond.Wait()
 		}
 	}
 }
+
 
 func (p *ConnPool) Put(conn net.Conn) {
 	pc, ok := conn.(*pooledConnWrapper)
@@ -161,6 +159,7 @@ func (p *ConnPool) Put(conn net.Conn) {
 
 	// 检查是否超过最大空闲连接数
 	if len(p.idleConns) >= p.maxIdle {
+		fmt.Printf("连接池超过最大空闲连接数,关闭连接\n")
 		pc.conn.conn.Close()
 		atomic.AddInt32(&p.activeCount, -1)
 		p.cond.Signal()
@@ -188,6 +187,7 @@ func (p *ConnPool) isHealthy(pc *PooledConn) bool {
 	}
 
 	// 处理其他连接错误，包括连接被关闭等
+	fmt.Printf("连接池连接健康检测异常,关闭连接，err: %v\n", err)
 	return false
 }
 

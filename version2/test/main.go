@@ -1,14 +1,21 @@
 package main
 
 import (
-	"context"
-	"fmt"
-	"runtime"
-	"time"
-	_ "net/http/pprof"
-	"net/http"
 	"MyRPC/core/client"
 	"MyRPC/pb"
+	"context"
+	"fmt"
+	"net/http"
+	_ "net/http/pprof"
+	"runtime"
+	"sync"
+	"sync/atomic"
+	"time"
+)
+
+var (
+	success int64
+	wg      sync.WaitGroup
 )
 
 func main() {
@@ -19,7 +26,7 @@ func main() {
 	}()
 
 	// 创建 RPC 客户端
-	c := pb.NewHelloClientProxy(client.WithTarget("127.0.0.1:8000"))
+	c := pb.NewHelloClientProxy(client.WithTarget("127.0.0.1:8001"))
 	if c == nil {
 		fmt.Println("Failed to create client")
 		return
@@ -27,19 +34,26 @@ func main() {
 
 	printMemStats("Before requests")
 
-	const N = 2
+	const N = 30000
 	start := time.Now()
-	success := 0
+
+
 
 	for i := 0; i < N; i++ {
-		rsp, err := c.Hello(context.Background(), &pb.HelloRequest{Msg: "world"})
-		if err == nil && rsp != nil {
-			success++
-		} else {
-			fmt.Printf("Request %d error: %v\n", i, err)
-		}
-	}
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			
 
+			rsp, err := c.Hello(context.Background(), &pb.HelloRequest{Msg: "world"})
+			if err == nil && rsp != nil {
+				atomic.AddInt64(&success, 1)
+			} else {
+				fmt.Printf("Request %d error: %v\n", i, err)
+			}
+		}(i)
+	}
+	wg.Wait()
 	elapsed := time.Since(start)
 	printMemStats("After requests")
 
@@ -50,7 +64,7 @@ func main() {
 	fmt.Printf("Avg per call:   %v\n", elapsed/time.Duration(N))
 
 	// 休眠3s
-	time.Sleep(3 * time.Second)
+	time.Sleep(10 * time.Second)
 }
 
 // 打印内存状态

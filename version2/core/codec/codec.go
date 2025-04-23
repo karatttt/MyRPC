@@ -215,7 +215,7 @@ func ReadFrame(conn net.Conn) ([]byte, error) {
 	n, err := io.ReadFull(buf, headerBuf)
 	if err != nil {
 		if err == io.EOF {
-			fmt.Printf("客户端没有发送任何数据，连接就关闭了")
+			fmt.Printf("客户端正常Close")
 			return nil, err
 		} else if err == io.ErrUnexpectedEOF {
 			fmt.Printf("收到部分数据 %d 字节，连接就断开了", n)
