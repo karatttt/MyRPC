@@ -140,7 +140,7 @@ func (t *serverTransport) handleConnection(ctx context.Context, conn net.Conn) {
 			frameCopy := frame // 创建副本避免闭包问题
 			err = t.pool.Submit(func() {
 				// 处理请求
-				response, err := t.ConnHandler.Handle(ctx, frameCopy)
+				response, err := t.ConnHandler.Handle(context.Background(), frameCopy)
 				if err != nil {
 					fmt.Printf("Handle error for %s: %v\n", conn.RemoteAddr(), err)
 					return

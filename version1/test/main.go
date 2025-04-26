@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"MyRPC/core/client"
 	"MyRPC/pb"
+	"sync"
 )
 
 func main() {
@@ -19,7 +20,7 @@ func main() {
 	}()
 
 	// 创建 RPC 客户端
-	c := pb.NewHelloClientProxy(client.WithTarget("127.0.0.1:8000"))
+	c := pb.NewHelloClientProxy(client.WithTarget("121.40.73.22:8000"))
 	if c == nil {
 		fmt.Println("Failed to create client")
 		return
@@ -27,18 +28,25 @@ func main() {
 
 	printMemStats("Before requests")
 
-	const N = 30000
+	const N = 5000
 	start := time.Now()
 	success := 0
+	var wg sync.WaitGroup
 
 	for i := 0; i < N; i++ {
-		rsp, err := c.Hello(context.Background(), &pb.HelloRequest{Msg: "world"})
-		if err == nil && rsp != nil {
-			success++
-		} else {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			rsp, err := c.Hello(context.Background(), &pb.HelloRequest{Msg: "world"})
+			if err == nil && rsp != nil {
+				success++
+			} else {
 			fmt.Printf("Request %d error: %v\n", i, err)
 		}
+		}(i)
+		
 	}
+	wg.Wait()
 
 	elapsed := time.Since(start)
 	printMemStats("After requests")

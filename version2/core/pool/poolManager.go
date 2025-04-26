@@ -89,8 +89,8 @@ func (pm *PoolManager) GetPool(addr string) *ConnPool {
 
 	pool := NewConnPool(
 		addr,           // 服务器地址
-		200,             // 最大活跃连接数
-		200,              // 最小空闲连接数
+		1000,             // 最大活跃连接数
+		1000,              // 最小空闲连接数
 		60*time.Second, // 空闲连接超时时间
 		60*time.Second, // 建立连接最大生命周期
 		func(address string) (net.Conn, error) {

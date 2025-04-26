@@ -75,14 +75,12 @@ func (t *serverTransport) handleConnection(ctx context.Context, conn net.Conn) {
 		fmt.Println("read frame error:", err)
 		return
 	}
-
 	// 调用service的Handler执行结果
-	response, err := t.ConnHandler.Handle(ctx, frame)
+	response, err := t.ConnHandler.Handle(context.Background(), frame)
 	if err != nil {
 		fmt.Println("handle error:", err)
 		return
 	}
-
 	// 发送响应，此时已经是完整帧
 	conn.Write(response)
 }

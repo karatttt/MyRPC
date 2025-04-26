@@ -26,7 +26,7 @@ func main() {
 	}()
 
 	// 创建 RPC 客户端
-	c := pb.NewHelloClientProxy(client.WithTarget("127.0.0.1:8001"))
+	c := pb.NewHelloClientProxy(client.WithTarget("121.40.244.59:8001"))
 	if c == nil {
 		fmt.Println("Failed to create client")
 		return
@@ -34,7 +34,7 @@ func main() {
 
 	printMemStats("Before requests")
 
-	const N = 30000
+	const N = 10000
 	start := time.Now()
 
 
@@ -64,7 +64,7 @@ func main() {
 	fmt.Printf("Avg per call:   %v\n", elapsed/time.Duration(N))
 
 	// 休眠3s
-	time.Sleep(10 * time.Second)
+	time.Sleep(3 * time.Second)
 }
 
 // 打印内存状态
