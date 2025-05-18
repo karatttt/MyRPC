@@ -73,6 +73,7 @@ type HelloAsyncClientProxy interface {
 	HelloAsync(ctx context.Context, in *HelloRequest, opts ...client.Option) (*internel.Future, *common.RPCError)
 }
 
+
 // 客户端代理实现
 type HelloClientProxyImpl struct {
 	client client.Client
@@ -83,6 +84,8 @@ type HelloAsyncClientProxyImpl struct {
 	client client.Client
 	opts   []client.Option
 }
+
+
 
 // 创建客户端代理
 func NewHelloClientProxy(opts ...client.Option) HelloClientProxy {
@@ -131,3 +134,5 @@ func (c *HelloAsyncClientProxyImpl) HelloAsync(ctx context.Context, req *HelloRe
 	newOpts := append(c.opts, opts...)
 	return c.client.InvokeAsync(ctx, req, rsp, newOpts...)
 }
+
+

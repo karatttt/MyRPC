@@ -1,13 +1,14 @@
 package transport
 
 import (
+	"MyRPC/common"
 	"MyRPC/core/codec"
 	"MyRPC/core/internel"
 	"MyRPC/core/pool"
-	"MyRPC/common"
 	"context"
 	"fmt"
 	"net"
+	"time"
 )
 
 type clientTransport struct{}
@@ -39,16 +40,13 @@ func (c *clientTransport) Send(ctx context.Context, reqBody interface{}, rspBody
 	}
 
 	// 获取连接
-	pool := pool.GetPoolManager().GetPool(opt.Address)
-	conn, err := pool.Get()
+	conn, ctx, err := fetchConn(ctx, opt)
 	if err != nil {
 		return &common.RPCError{
-			Code:    common.ErrCodeConnection,
+			Code:    common.ErrCodeNetwork,
 			Message: fmt.Sprintf("failed to get connection: %v", err),
 		}
 	}
-	defer pool.Put(conn)
-
 	// reqbody序列化
 	reqData, err := codec.Marshal(reqBody)
 	if err != nil {
@@ -94,9 +92,9 @@ func (c *clientTransport) Send(ctx context.Context, reqBody interface{}, rspBody
 			Message: fmt.Sprintf("failed to read frame: %v", err),
 		}
 	}
-
 	// 获取msg
 	ctx, msg := internel.GetMessage(ctx)
+
 	// rspDataBuf解码，提取响应体数据
 	rspData, err := opt.Codec.Decode(msg, rspDataBuf)
 	if err != nil {
@@ -131,3 +129,27 @@ func (c *clientTransport) tcpReadFrame(ctx context.Context, conn net.Conn) ([]by
 	return codec.ReadFrame(conn)
 }
 
+func fetchConn(ctx context.Context, opt *ClientTransportOption) (conn net.Conn, ctxRes context.Context, err error) {
+	if !opt.MuxOpen {
+		pool := pool.GetPoolManager().GetPool(opt.Address, 1000, 1000, 60*time.Second, 60*time.Second, false)
+		conn, err := pool.Get()
+		if err != nil {
+			return nil, ctx ,err
+		}
+		defer pool.Put(conn)
+	} else {
+		pool := pool.GetPoolManager().GetPool(opt.Address, 8, 8, 60*time.Second, 60*time.Second, true)
+		conn, err := pool.Get()
+		if err != nil {
+			return nil, ctx, err
+		}
+		// 获取msg，开启mux，并设置sequenceID
+		ctx, msg := internel.GetMessage(ctx)
+		msg.WithMuxOpen(opt.MuxOpen)
+		if opt.MuxOpen {
+			msg.WithSequenceID(pool.GetSequenceIDByMuxConn(conn))
+		}
+		return conn, ctx ,nil
+	}
+	return nil, ctx, fmt.Errorf("failed to get connection")
+}

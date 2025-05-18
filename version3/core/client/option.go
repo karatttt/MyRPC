@@ -24,6 +24,8 @@ type Options struct {
 	Timeout time.Duration
 	// 重试次数（异步模式下，超时或者err进行重试）
 	RetryTimes int
+	// 是否开启多路复用
+	MuxOpen bool
 }
 
 var DefaultOptions = NewOptions()
@@ -72,5 +74,13 @@ func WithRetryTimes(retryTimes int) Option {
 	return func(o *Options) {
 		o.RetryTimes = retryTimes
 		o.ClientTransportOption.RetryTimes = retryTimes
+	}
+}
+
+// WithMuxOpen 设置是否开启多路复用
+func WithMuxOpen(muxOpen bool) Option {
+	return func(o *Options) {
+		o.MuxOpen = muxOpen
+		o.ClientTransportOption.MuxOpen = muxOpen
 	}
 }

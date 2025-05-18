@@ -12,4 +12,6 @@ type ClientTransportOption struct{
 	Timeout time.Duration
 	// 重试次数（异步模式）
 	RetryTimes int
+	// 是否开启多路复用
+	MuxOpen bool
 }

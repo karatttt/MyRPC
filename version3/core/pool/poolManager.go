@@ -64,7 +64,7 @@ func (pm *PoolManager) handleSignals() {
 }
 
 // GetPool 获取指定地址的连接池，如果不存在则创建
-func (pm *PoolManager) GetPool(addr string) *ConnPool {
+func (pm *PoolManager) GetPool(addr string, maxActive, maxIdle int, idleTimeout, maxWait time.Duration, isMux bool) *ConnPool {
 	pm.mu.RLock()
 	if pool, exists := pm.pools[addr]; exists {
 		pm.mu.RUnlock()
@@ -83,13 +83,14 @@ func (pm *PoolManager) GetPool(addr string) *ConnPool {
 
 	pool := NewConnPool(
 		addr,           // 服务器地址
-		1000,             // 最大活跃连接数
-		1000,              // 最小空闲连接数
-		60*time.Second, // 空闲连接超时时间
-		60*time.Second, // 建立连接最大生命周期
+		maxActive,             // 最大活跃连接数
+		maxIdle,              // 最小空闲连接数
+		idleTimeout, // 空闲连接超时时间
+		maxWait, // 建立连接最大生命周期
 		func(address string) (net.Conn, error) {
 			return net.DialTimeout("tcp", address, 60*time.Second)
 		},
+		isMux,
 	)
 	pm.pools[addr] = pool
 	return pool

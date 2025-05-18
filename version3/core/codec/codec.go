@@ -35,7 +35,7 @@ type FrameHeader struct {
 	MagicNumber    uint16 // 魔数
 	Version        uint8  // 版本号
 	MessageType    uint8  // 消息类型
-	SequenceID     uint32 // 序列号
+	SequenceID     uint32 // 流序号
 	ProtocolLength uint32 // 协议数据长度
 	BodyLength     uint32 // 消息体长度
 }
@@ -74,12 +74,18 @@ func (c *clientcodec) Encode(ctx context.Context, reqData []byte) ([]byte, error
 		return nil, fmt.Errorf("serialize protocol data error: %v", err)
 	}
 
+	// 判断是否是多路复用，是的话需要设置流序号
+	sequenceID := uint32(1)
+	if msg.GetMuxOpen(){
+		sequenceID = msg.GetSequenceID()
+	}
+
 	// 创建帧头
 	header := FrameHeader{
 		MagicNumber:    MagicNumber,
 		Version:        Version,
 		MessageType:    MessageTypeRequest,
-		SequenceID:     1, // 这里应该使用递增的序列号
+		SequenceID:     sequenceID, // 这里应该使用递增的序列号
 		ProtocolLength: uint32(len(protocolDataBytes)),
 		BodyLength:     uint32(len(reqData)),
 	}
@@ -141,13 +147,13 @@ func (c *servercodec) Encode(ctx context.Context, reqData []byte) ([]byte, error
 	if err != nil {
 		return nil, fmt.Errorf("serialize protocol data error: %v", err)
 	}
-
+	sequenceID := msg.GetSequenceID()
 	// 创建帧头
 	header := FrameHeader{
 		MagicNumber:    MagicNumber,
 		Version:        Version,
 		MessageType:    MessageTypeRequest,
-		SequenceID:     1, // 这里应该使用递增的序列号
+		SequenceID:     sequenceID, 
 		ProtocolLength: uint32(len(protocolDataBytes)),
 		BodyLength:     uint32(len(reqData)),
 	}
@@ -201,6 +207,7 @@ func (c *servercodec) Decode(msg internel.Message, frame []byte) ([]byte, error)
 	// 设置到消息中
 	msg.WithServiceName(proto.ServiceName)
 	msg.WithMethodName(proto.MethodName)
+	msg.WithSequenceID(header.SequenceID)
 
 	// 返回消息体
 	return frame[HeaderLength+header.ProtocolLength:], nil
