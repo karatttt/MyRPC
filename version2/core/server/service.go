@@ -121,7 +121,7 @@ func (s *service) Handle(ctx context.Context, frame []byte) (rsp []byte, err err
 // NewService creates a new service instance with the given options
 func NewService(serviceName string, opts ...Option) Service {
 	s := &service{
-		handler: make(map[string]Handler),
+		handler: make(map[string]Handler),	
 		opts:    DefaultOptions,
 	}
 

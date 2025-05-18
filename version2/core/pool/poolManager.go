@@ -18,32 +18,29 @@ var (
 	poolManagerOnce sync.Once
 )
 
-type PoolManager struct {
-	mu       sync.RWMutex
-	pools    map[string]*ConnPool
-	ctx      context.Context
-	cancel   context.CancelFunc
-	shutdown chan struct{}
-	sigChan  chan os.Signal
-}
+	type PoolManager struct {
+		mu       sync.RWMutex
+		pools    map[string]*ConnPool // key是目的ip加端口，v是实际连接池
+		ctx      context.Context
+		cancel   context.CancelFunc
+		sigChan  chan os.Signal
+	}
 
-// GetPoolManager 获取全局唯一的 PoolManager 实例
-func GetPoolManager() *PoolManager {
-	poolManagerOnce.Do(func() {
-		ctx, cancel := context.WithCancel(context.Background())
-		globalPoolManager = &PoolManager{
-			pools:    make(map[string]*ConnPool),
-			ctx:      ctx,
-			cancel:   cancel,
-			shutdown: make(chan struct{}),
-			sigChan:  make(chan os.Signal, 1),
-		}
-
-		// 启动信号处理
-		go globalPoolManager.handleSignals()
-	})
-	return globalPoolManager
-}
+	// GetPoolManager 获取全局唯一的 PoolManager 实例
+	func GetPoolManager() *PoolManager {
+		poolManagerOnce.Do(func() {
+			ctx, cancel := context.WithCancel(context.Background())
+			globalPoolManager = &PoolManager{
+				pools:    make(map[string]*ConnPool),
+				ctx:      ctx,
+				cancel:   cancel,
+				sigChan:  make(chan os.Signal, 1),
+			}
+			// 启动信号处理
+			go globalPoolManager.handleSignals()
+		})
+		return globalPoolManager
+	}
 
 // handleSignals 处理系统信号
 func (pm *PoolManager) handleSignals() {
@@ -64,9 +61,6 @@ func (pm *PoolManager) handleSignals() {
 		fmt.Printf("Error during shutdown: %v\n", err)
 	}
 	fmt.Println("Connection pools shut down successfully")
-
-	// 通知关闭完成
-	close(pm.shutdown)
 }
 
 // GetPool 获取指定地址的连接池，如果不存在则创建
@@ -125,9 +119,4 @@ func (pm *PoolManager) Shutdown(ctx context.Context) error {
 	case <-ctx.Done():
 		return ctx.Err()
 	}
-}
-
-// WaitForShutdown 等待关闭完成
-func (pm *PoolManager) WaitForShutdown() {
-	<-pm.shutdown
 }

@@ -22,20 +22,21 @@ type PooledConn struct {
 }
 
 type ConnPool struct {
-	mu          sync.RWMutex                   // 读写锁，用于保护连接池的并发访问
-	cond        *sync.Cond                     // 条件变量，用于等待可用连接
-	addr        string                         // 服务器地址，格式为 "host:port"
-	maxActive   int                            // 连接池最大活跃连接数，当达到这个数量时，新的请求会等待
-	maxIdle     int                            // 连接池最大空闲连接数，超过这个数量的空闲连接会被关闭
-	idleTimeout time.Duration                  // 空闲连接的最大存活时间，超过这个时间的空闲连接会被清理
-	maxWait     time.Duration                  // 获取连接的最大等待时间，超过这个时间还未获取到连接会返回超时错误
-	dialFunc    func(string) (net.Conn, error) // 创建新连接的函数，可以自定义连接创建逻辑
-	idleConns   []*PooledConn                  // 空闲连接列表
-	activeCount int32                          // 当前活跃连接数（使用原子操作）
-	cleanerOnce sync.Once                      // 确保清理器只启动一次
-	closed      bool                           // 连接池是否已关闭
-	// 用于统计连接池的情况
-	stats struct {
+	mu          sync.RWMutex
+	cond        *sync.Cond
+	addr        string
+	maxActive   int
+	maxIdle     int
+	idleTimeout time.Duration
+	maxWait     time.Duration
+	dialFunc    func(string) (net.Conn, error)
+	idleConns   []*PooledConn
+	activeCount int32          // 当前活跃连接数
+	closing     bool           // 正在关闭标志
+	closed      bool           // 完全关闭标志
+	wg          sync.WaitGroup // 等待活跃连接完成
+	cleanerOnce sync.Once
+	stats       struct {
 		Hits     uint64
 		Misses   uint64
 		Timeouts uint64
@@ -64,10 +65,16 @@ func (p *ConnPool) Get() (net.Conn, error) {
 		return nil, ErrPoolClosed
 	}
 
+	// 记录开始等待时间
+	startWait := time.Now()
+
 	// 设置等待超时
-	var startWait time.Time
+	var timer *time.Timer
 	if p.maxWait > 0 {
-		startWait = time.Now() // 记录开始等待时间
+		timer = time.AfterFunc(p.maxWait, func() {
+			p.cond.Broadcast()
+		})
+		defer timer.Stop()
 	}
 
 	for {
@@ -76,6 +83,9 @@ func (p *ConnPool) Get() (net.Conn, error) {
 			conn := p.idleConns[len(p.idleConns)-1]
 			p.idleConns = p.idleConns[:len(p.idleConns)-1]
 			atomic.AddUint64(&p.stats.Hits, 1)
+			// 从空闲变为活跃
+			atomic.AddInt32(&p.activeCount, 1)
+			p.wg.Add(1)
 
 			// 连接健康检查
 			if !p.isHealthy(conn) {
@@ -97,6 +107,7 @@ func (p *ConnPool) Get() (net.Conn, error) {
 		// 检查是否可以创建新连接
 		if int(atomic.LoadInt32(&p.activeCount)) < p.maxActive {
 			atomic.AddInt32(&p.activeCount, 1)
+			p.wg.Add(1)
 			atomic.AddUint64(&p.stats.Misses, 1)
 			p.mu.Unlock()
 
@@ -120,19 +131,18 @@ func (p *ConnPool) Get() (net.Conn, error) {
 		if p.maxWait > 0 {
 			atomic.AddUint64(&p.stats.Timeouts, 1)
 			p.cond.Wait()
-
-			// 等待结束后判断是否超时
-			if time.Since(startWait) >= p.maxWait {
-				// 超时了
+			// 如果定时器触发了，说明是超时了
+			if timer != nil && !timer.Stop() {
 				p.mu.Unlock()
-				return nil, errors.New("连接池获取连接超时，超时时间: " + time.Since(startWait).String())
+				waitTime := time.Since(startWait)
+				fmt.Printf("连接池获取连接超时，等待时间: %v\n", waitTime)
+				return nil, fmt.Errorf("connection timeout after %v", waitTime)
 			}
 		} else {
 			p.cond.Wait()
 		}
 	}
 }
-
 
 func (p *ConnPool) Put(conn net.Conn) {
 	pc, ok := conn.(*pooledConnWrapper)
@@ -144,24 +154,27 @@ func (p *ConnPool) Put(conn net.Conn) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	if p.closed {
+	// 减少活跃计数
+	atomic.AddInt32(&p.activeCount, -1)
+	p.wg.Done()
+
+	// 如果连接池正在关闭或已关闭，直接关闭连接
+	if p.closing || p.closed {
 		pc.conn.conn.Close()
+		p.cond.Signal()
 		return
 	}
 
 	// 检查连接是否健康
 	if !p.isHealthy(pc.conn) {
 		pc.conn.conn.Close()
-		atomic.AddInt32(&p.activeCount, -1)
 		p.cond.Signal()
 		return
 	}
 
 	// 检查是否超过最大空闲连接数
 	if len(p.idleConns) >= p.maxIdle {
-		fmt.Printf("连接池超过最大空闲连接数,关闭连接\n")
 		pc.conn.conn.Close()
-		atomic.AddInt32(&p.activeCount, -1)
 		p.cond.Signal()
 		return
 	}
@@ -172,41 +185,63 @@ func (p *ConnPool) Put(conn net.Conn) {
 }
 
 func (p *ConnPool) isHealthy(pc *PooledConn) bool {
-	pc.conn.SetReadDeadline(time.Now().Add(time.Millisecond)) // 设置超时时间为 1 毫秒
-	buf := make([]byte, 1)                                    // 创建一个缓冲区
-	n, err := pc.conn.Read(buf)                               // 尝试从连接读取数据到缓冲区
+	pc.conn.SetReadDeadline(time.Now().Add(time.Millisecond))
+	buf := make([]byte, 1)
+	n, err := pc.conn.Read(buf)
 
-	// 如果没有错误或读取了数据，则说明发生了意外的读取
 	if err == nil || n > 0 {
 		return false
 	}
 
-	// 如果是超时错误，说明连接空闲，但没有读取到数据，认为是正常的超时
 	if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
-		return true // 无错误，正常超时
+		return true
 	}
 
-	// 处理其他连接错误，包括连接被关闭等
-	fmt.Printf("连接池连接健康检测异常,关闭连接，err: %v\n", err)
 	return false
 }
 
-func (p *ConnPool) Close() {
+func (p *ConnPool) Shutdown(timeout time.Duration) error {
 	p.mu.Lock()
-	defer p.mu.Unlock()
+	// 标记为正在关闭，不再接受新连接
+	p.closing = true
+	p.mu.Unlock()
 
-	if p.closed {
-		return
-	}
-	fmt.Println("Closing now connection pool")
-	p.closed = true
+	// 关闭所有空闲连接
+	p.mu.Lock()
 	for _, conn := range p.idleConns {
-		// 打印关闭的连接
-		fmt.Println("Closing idle connection")
 		conn.conn.Close()
 	}
 	p.idleConns = nil
-	p.cond.Broadcast()
+	p.mu.Unlock()
+
+	// 等待活跃连接完成或超时
+	done := make(chan struct{})
+	go func() {
+		p.wg.Wait() // 等待所有活跃连接归还
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		// 所有活跃连接已完成
+		p.mu.Lock()
+		p.closed = true
+		p.mu.Unlock()
+		return nil
+	case <-time.After(timeout):
+		// 超时，强制关闭
+		p.mu.Lock()
+		p.closed = true
+		p.mu.Unlock()
+		return fmt.Errorf("连接池关闭超时，仍有 %d 个活跃连接", atomic.LoadInt32(&p.activeCount))
+	}
+}
+
+func (p *ConnPool) Close() {
+	// 默认给5秒超时
+	if err := p.Shutdown(5 * time.Second); err != nil {
+		fmt.Println("连接池关闭警告:", err)
+	}
 }
 
 func (p *ConnPool) Stats() map[string]interface{} {
@@ -223,7 +258,6 @@ func (p *ConnPool) Stats() map[string]interface{} {
 	}
 }
 
-// pooledConnWrapper 包装连接，确保正确返回到连接池
 type pooledConnWrapper struct {
 	conn *PooledConn
 	pool *ConnPool
@@ -238,7 +272,6 @@ func (w *pooledConnWrapper) Write(b []byte) (n int, err error) {
 }
 
 func (w *pooledConnWrapper) Close() error {
-	w.pool.Put(w)
 	return nil
 }
 
@@ -279,9 +312,10 @@ func (p *ConnPool) cleanIdle() {
 	now := time.Now()
 	var retained []*PooledConn
 	for _, c := range p.idleConns {
-		if now.Sub(c.createdAt) > p.idleTimeout {
+		if now.Sub(c.lastUsed) > p.idleTimeout {
 			c.conn.Close()
-			p.activeCount--
+			atomic.AddInt32(&p.activeCount, -1)
+			p.wg.Done()
 		} else {
 			retained = append(retained, c)
 		}

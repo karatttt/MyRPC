@@ -36,9 +36,6 @@ func main() {
 
 	const N = 10000
 	start := time.Now()
-
-
-
 	for i := 0; i < N; i++ {
 		wg.Add(1)
 		go func(i int) {

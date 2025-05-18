@@ -67,7 +67,6 @@ func RegisterHelloServer(s *server.Server, svr interface{}) error {
 
 // 客户端代理接口
 type HelloClientProxy interface  {
-	// TODO 这个opt预留，看看后续service是否需要
 	Hello(ctx context.Context, in *HelloRequest, opts ...client.Option) (*HelloReply, error)
 }
 

@@ -29,8 +29,6 @@ func (c *clientTransport) Send(ctx context.Context, reqBody interface{}, rspBody
 	if err != nil {
 		return err
 	}
-
-	
 	defer conn.Close()
 
 	// reqbody序列化
