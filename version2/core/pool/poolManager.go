@@ -61,6 +61,7 @@ func (pm *PoolManager) handleSignals() {
 		fmt.Printf("Error during shutdown: %v\n", err)
 	}
 	fmt.Println("Connection pools shut down successfully")
+	os.Exit(0)
 }
 
 // GetPool 获取指定地址的连接池，如果不存在则创建

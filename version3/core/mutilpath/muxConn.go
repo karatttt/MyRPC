@@ -2,7 +2,6 @@ package mutilpath
 
 import (
 	"MyRPC/core/codec"
-	"container/list"
 	"encoding/binary"
 	"fmt"
 	"net"
@@ -10,27 +9,26 @@ import (
 	"sync/atomic"
 	"time"
 )
-const (
-    minFrameHeaderSize = 16 // FrameHeader的固定长度
-)
 
+const (
+	minFrameHeaderSize = 16 // FrameHeader的固定长度
+)
 
 // 实现net.Conn接口的结构体，保证适配连接池的get和put
 // 实际上也是一个连接，只是多了reqID从而可以派生出多个流，区分达到多路复用的目的
 type MuxConn struct {
-	conn        net.Conn // 原始连接
-	pending     map[uint64]*pendingRequest // 每一个reqID（流）对应的等待通道
-	buffer      *frameBuffer // 总的frame的buffer
-	closeChan   chan struct{}
-	readerDone  chan struct{}
-	writeLock   sync.Mutex
+	conn         net.Conn                   // 原始连接
+	pending      map[uint32]*pendingRequest // 每一个reqID（流）对应的等待通道
+	closeChan    chan struct{}
+	readerDone   chan struct{}
+	writeLock    sync.Mutex
 	reqIDCounter uint64 // 分配递增的请求ID
-	mu          sync.RWMutex
+	mu           sync.RWMutex
 }
 
 // 对实际的帧数据做了一个封装，方便处理
 type MuxFrame struct {
-	data []byte
+	Data []byte
 }
 
 type pendingRequest struct {
@@ -38,25 +36,16 @@ type pendingRequest struct {
 	timeout time.Time
 }
 
-
-
 func NewMuxConn(conn net.Conn, bufferSize int) *MuxConn {
 	mc := &MuxConn{
 		conn:       conn,
-		pending:    make(map[uint64]*pendingRequest),
-		buffer:     newFrameBuffer(bufferSize),
+		pending:    make(map[uint32]*pendingRequest),
 		closeChan:  make(chan struct{}),
 		readerDone: make(chan struct{}),
 	}
+	// 启动读取循环，对该连接开启
 	go mc.readLoop()
 	return mc
-}
-
-func newFrameBuffer(maxSize int) *frameBuffer {
-	return &frameBuffer{
-		frames: make(map[uint64]*list.List),
-		maxLen: maxSize,
-	}
 }
 
 func (mc *MuxConn) NextRequestID() uint64 {
@@ -83,16 +72,15 @@ func (mc *MuxConn) readLoop() {
 	}
 }
 
-
 func (mc *MuxConn) dispatchFrame(frame []byte) {
 	mc.mu.RLock()
 	// 截取流序号
 	sequenceID := binary.BigEndian.Uint32(frame[4:8])
-	pr, exists := mc.pending[uint64(sequenceID)]
+	pr, exists := mc.pending[uint32(sequenceID)]
 	mc.mu.RUnlock()
 
 	frameStruct := MuxFrame{
-		data: frame,
+		Data: frame,
 	}
 	if exists {
 		select {
@@ -103,13 +91,24 @@ func (mc *MuxConn) dispatchFrame(frame []byte) {
 			fmt.Println("丢弃帧 %s：通道已满", frame)
 		}
 	} else {
-		// 存储未匹配帧
-		if err := mc.buffer.store(frameStruct, uint64(sequenceID)); err != nil {
-			// 缓冲区已满，记录日志
-		}
+		// 直接丢弃或打印日志
+		fmt.Printf("收到未匹配的帧，sequenceID=%d，丢弃\n", sequenceID)
 	}
 }
 
+func (mc *MuxConn) RegisterPending(seqID uint32) chan MuxFrame {
+	mc.mu.Lock()
+	defer mc.mu.Unlock()
+	ch := make(chan MuxFrame, 1)
+	mc.pending[seqID] = &pendingRequest{ch: ch, timeout: time.Now().Add(10 * time.Second)}
+	return ch
+}
+
+func (mc *MuxConn) UnregisterPending(seqID uint32) {
+	mc.mu.Lock()
+	defer mc.mu.Unlock()
+	delete(mc.pending, seqID)
+}
 
 
 func (w *MuxConn) Read(b []byte) (n int, err error) {
@@ -146,3 +145,4 @@ func (w *MuxConn) SetReadDeadline(t time.Time) error {
 func (w *MuxConn) SetWriteDeadline(t time.Time) error {
 	return w.conn.SetWriteDeadline(t)
 }
+

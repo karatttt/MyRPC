@@ -136,7 +136,7 @@ func (t *serverTransport) handleConnection(ctx context.Context, conn net.Conn) {
 			// 重置读取超时
 			conn.SetReadDeadline(time.Now().Add(idleTimeout))
 
-			// 使用协程池处理请求
+			// 使用协程池处理请求，适用于多路复用模式
 			frameCopy := frame // 创建副本避免闭包问题
 			err = t.pool.Submit(func() {
 				// 处理请求

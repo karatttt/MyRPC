@@ -1,31 +1,31 @@
 package main
 
 import (
+	"MyRPC/core/client"
+	"MyRPC/pb"
 	"context"
 	"fmt"
 	"os"
-	"os/signal"
-	"syscall"
+	// "os/signal"
+	// "syscall"
 	"time"
-	"MyRPC/core/client"
-	"MyRPC/pb"
 )
 
 func main() {
 	// 创建一个带计时功能的上下文
-	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
-	// 设置信号处理
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	// // 设置信号处理
+	// sigChan := make(chan os.Signal, 1)
+	// signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
-	// 在单独的 goroutine 中处理信号
-	go func() {
-		sig := <-sigChan
-		fmt.Printf("\nReceived signal: %v\n", sig)
-		cancel() // 取消上下文
-	}()
+	// // 在单独的 goroutine 中处理信号
+	// go func() {
+	// 	sig := <-sigChan
+	// 	fmt.Printf("\nReceived signal: %v\n", sig)
+	// 	cancel() // 取消上下文
+	// }()
 
 	// 调用两次
 	for i := 0; i < 1; i++ {
@@ -47,11 +47,11 @@ func main() {
 			}
 			fmt.Println("Response:", response.Msg)
 
-			
 		}
 	}
 
 	// 等待上下文超时
 	<-ctx.Done()
 	fmt.Println("Shutting down gracefully...")
+	os.Exit(0)
 }

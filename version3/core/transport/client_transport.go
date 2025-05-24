@@ -4,6 +4,7 @@ import (
 	"MyRPC/common"
 	"MyRPC/core/codec"
 	"MyRPC/core/internel"
+	"MyRPC/core/mutilpath"
 	"MyRPC/core/pool"
 	"context"
 	"fmt"
@@ -65,35 +66,66 @@ func (c *clientTransport) Send(ctx context.Context, reqBody interface{}, rspBody
 		}
 	}
 
-	// 写数据到连接中
-	err = c.tcpWriteFrame(ctx, conn, framedata)
-	if err != nil {
-		return &common.RPCError{
-			Code:    common.ErrCodeNetwork,
-			Message: fmt.Sprintf("failed to write frame: %v", err),
-		}
-	}
-
-	// 读取tcp帧
-	rspDataBuf, err := c.tcpReadFrame(ctx, conn)
-	if err != nil {
-		// 先检查是否设置了超时时间，是超时错误则返回超时错误，否则返回网络错误
-		if opt.Timeout > 0 {
-			select {
-			case <-done:
-				return &common.RPCError{
-					Code:    common.ErrCodeTimeout,
-					Message: "request timeout",
-				}
-			}
-		}
-		return &common.RPCError{
-			Code:    common.ErrCodeNetwork,
-			Message: fmt.Sprintf("failed to read frame: %v", err),
-		}
-	}
 	// 获取msg
 	ctx, msg := internel.GetMessage(ctx)
+	rspDataBuf := make([]byte, 0)
+
+	if !opt.MuxOpen {
+		// 正常模式
+		// 写数据到连接中
+		err = c.tcpWriteFrame(ctx, conn, framedata)
+		if err != nil {
+			return &common.RPCError{
+				Code:    common.ErrCodeNetwork,
+				Message: fmt.Sprintf("failed to write frame: %v", err),
+			}
+		}
+
+		// 读取tcp帧
+		rspDataBuf, err = c.tcpReadFrame(ctx, conn)
+		if err != nil {
+			// 先检查是否设置了超时时间，是超时错误则返回超时错误，否则返回网络错误
+			if opt.Timeout > 0 {
+				select {
+				case <-done:
+					return &common.RPCError{
+						Code:    common.ErrCodeTimeout,
+						Message: "request timeout",
+					}
+				}
+			}
+			return &common.RPCError{
+				Code:    common.ErrCodeNetwork,
+				Message: fmt.Sprintf("failed to read frame: %v", err),
+			}
+		}
+	} else {
+		// mux模式下，通过ch阻塞等待相应的流回包
+		muxConn, _ := conn.(*mutilpath.MuxConn)
+		seqID := msg.GetSequenceID()
+		ch := muxConn.RegisterPending(seqID)
+		defer muxConn.UnregisterPending(seqID)
+
+		// 写数据
+		err = c.tcpWriteFrame(ctx, conn, framedata)
+		if err != nil {
+			return &common.RPCError{
+				Code:    common.ErrCodeNetwork,
+				Message: fmt.Sprintf("failed to write frame: %v", err),
+			}
+		}
+
+		// 读响应
+		select {
+		case frame := <-ch:
+			rspDataBuf = frame.Data
+		case <-ctx.Done():
+			return &common.RPCError{
+				Code:    common.ErrCodeNetwork,
+				Message: fmt.Sprintf("failed to read frame: %v", err),
+			}
+		}
+	}
 
 	// rspDataBuf解码，提取响应体数据
 	rspData, err := opt.Codec.Decode(msg, rspDataBuf)
@@ -134,7 +166,7 @@ func fetchConn(ctx context.Context, opt *ClientTransportOption) (conn net.Conn, 
 		pool := pool.GetPoolManager().GetPool(opt.Address, 1000, 1000, 60*time.Second, 60*time.Second, false)
 		conn, err := pool.Get()
 		if err != nil {
-			return nil, ctx ,err
+			return nil, ctx, err
 		}
 		defer pool.Put(conn)
 	} else {
@@ -149,7 +181,7 @@ func fetchConn(ctx context.Context, opt *ClientTransportOption) (conn net.Conn, 
 		if opt.MuxOpen {
 			msg.WithSequenceID(pool.GetSequenceIDByMuxConn(conn))
 		}
-		return conn, ctx ,nil
+		return conn, ctx, nil
 	}
 	return nil, ctx, fmt.Errorf("failed to get connection")
 }
