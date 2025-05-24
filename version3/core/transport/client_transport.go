@@ -175,12 +175,11 @@ func fetchConn(ctx context.Context, opt *ClientTransportOption) (conn net.Conn, 
 		if err != nil {
 			return nil, ctx, err
 		}
+		defer pool.Put(conn)
 		// 获取msg，开启mux，并设置sequenceID
 		ctx, msg := internel.GetMessage(ctx)
 		msg.WithMuxOpen(opt.MuxOpen)
-		if opt.MuxOpen {
-			msg.WithSequenceID(pool.GetSequenceIDByMuxConn(conn))
-		}
+		msg.WithSequenceID(pool.GetSequenceIDByMuxConn(conn))
 		return conn, ctx, nil
 	}
 	return nil, ctx, fmt.Errorf("failed to get connection")

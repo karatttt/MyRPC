@@ -1,13 +1,13 @@
 package pool
 
 import (
+	"MyRPC/core/mutilpath"
 	"errors"
 	"fmt"
 	"net"
 	"sync"
 	"sync/atomic"
 	"time"
-	"MyRPC/core/mutilpath"
 )
 
 var (
@@ -43,11 +43,11 @@ type ConnPool struct {
 		Errors   uint64
 	}
 
-	 // 多路复用相关字段
-	 isMux       bool                // 是否启用多路复用
-	 muxConns    map[*PooledConn]*mutilpath.MuxConn // 多路复用连接映射，每一个连接对应一个MuxConn，实际上MuxConn也是conn的一个封装
-	 maxStreams  int                 // 每个muxconn连接最大流数
-	 streamCount map[*PooledConn]int // 连接对应的muxConn连接的当前流数
+	// 多路复用相关字段
+	isMux       bool                               // 是否启用多路复用
+	muxConns    map[*PooledConn]*mutilpath.MuxConn // 多路复用连接映射，每一个连接对应一个MuxConn，实际上MuxConn也是conn的一个封装
+	maxStreams  int                                // 每个muxconn连接最大流数
+	streamCount map[*PooledConn]int                // 连接对应的muxConn连接的当前流数
 
 }
 
@@ -68,143 +68,147 @@ func NewConnPool(addr string, maxActive, maxIdle int, idleTimeout, maxWait time.
 	return p
 }
 func (p *ConnPool) Get() (net.Conn, error) {
-    p.mu.Lock()
-    defer p.mu.Unlock()
-    
-    if p.closed {
-        return nil, ErrPoolClosed
-    }
+	p.mu.Lock()
+	defer p.mu.Unlock()
 
-    // 记录开始等待时间
-    startWait := time.Now()
-    
-    // 设置等待超时
-    var timer *time.Timer
-    if p.maxWait > 0 {
-        timer = time.AfterFunc(p.maxWait, func() {
-            p.cond.Broadcast()
-        })
-        defer timer.Stop()
-    }
+	if p.closed {
+		return nil, ErrPoolClosed
+	}
 
-    for {
-        // 1. 优先检查空闲连接
-        if len(p.idleConns) > 0 {
-            conn := p.idleConns[len(p.idleConns)-1]
-            p.idleConns = p.idleConns[:len(p.idleConns)-1]
-            atomic.AddUint64(&p.stats.Hits, 1)
-            
-            // 从空闲变为活跃
-            atomic.AddInt32(&p.activeCount, 1)
-            p.wg.Add(1)
+	// 记录开始等待时间
+	startWait := time.Now()
 
-            // 连接健康检查
-            if !p.isHealthy(conn) {
-                conn.conn.Close()
-                atomic.AddInt32(&p.activeCount, -1)
-                continue
-            }
+	// 设置等待超时
+	var timer *time.Timer
+	if p.maxWait > 0 {
+		timer = time.AfterFunc(p.maxWait, func() {
+			p.cond.Broadcast()
+		})
+		defer timer.Stop()
+	}
 
-            // 重置所有超时设置
-            conn.conn.SetDeadline(time.Time{})
-            conn.conn.SetReadDeadline(time.Time{})
-            conn.conn.SetWriteDeadline(time.Time{})
+	for {
+		// 1. 优先检查空闲连接
+		if len(p.idleConns) > 0 {
+			conn := p.idleConns[len(p.idleConns)-1]
+			p.idleConns = p.idleConns[:len(p.idleConns)-1]
+			atomic.AddUint64(&p.stats.Hits, 1)
 
-            conn.lastUsed = time.Now()
-            
-            // 多路复用处理
-            if p.isMux {
-                if muxConn, exists := p.muxConns[conn]; exists {
-                    if p.streamCount[conn] < p.maxStreams {
-                        p.streamCount[conn]++
+			// 从空闲变为活跃
+			atomic.AddInt32(&p.activeCount, 1)
+			p.wg.Add(1)
+
+			// 连接健康检查
+			if !p.isHealthy(conn) {
+				conn.conn.Close()
+				atomic.AddInt32(&p.activeCount, -1)
+				continue
+			}
+
+			// 重置所有超时设置
+			conn.conn.SetDeadline(time.Time{})
+			conn.conn.SetReadDeadline(time.Time{})
+			conn.conn.SetWriteDeadline(time.Time{})
+
+			conn.lastUsed = time.Now()
+
+			// 多路复用处理
+			if p.isMux {
+				if muxConn, exists := p.muxConns[conn]; exists {
+					if p.streamCount[conn] < p.maxStreams {
+						p.streamCount[conn]++
 						MuxConn2SequenceIDMap[muxConn] = muxConn.NextRequestID()
-                        return muxConn, nil
-                    }
-                }
-                // 如果不是多路复用连接或已达最大流数，回退到普通连接
-            }
-            
-            p.mu.Unlock()
-            return &pooledConnWrapper{conn, p}, nil
-        }
+						return muxConn, nil
+					}
+				}
+				// 如果不是多路复用连接或已达最大流数，回退到普通连接
+			}
 
-        // 2. 检查是否可以创建新连接
-        if int(atomic.LoadInt32(&p.activeCount)) < p.maxActive {
-            atomic.AddInt32(&p.activeCount, 1)
-            p.wg.Add(1)
-            atomic.AddUint64(&p.stats.Misses, 1)
-            p.mu.Unlock()
+			p.mu.Unlock()
+			return &pooledConnWrapper{conn, p}, nil
+		}
 
-            rawConn, err := p.dialFunc(p.addr)
-            if err != nil {
-                atomic.AddInt32(&p.activeCount, -1)
-                p.wg.Done()
-                atomic.AddUint64(&p.stats.Errors, 1)
-                p.mu.Lock()
-                p.cond.Signal()
-                p.mu.Unlock()
-                return nil, err
-            }
+		// 2. 检查是否可以创建新连接
+		if int(atomic.LoadInt32(&p.activeCount)) < p.maxActive {
+			atomic.AddInt32(&p.activeCount, 1)
+			p.wg.Add(1)
+			atomic.AddUint64(&p.stats.Misses, 1)
+			p.mu.Unlock()
 
-            pooledConn := &PooledConn{
-                conn:      rawConn,
-                createdAt: time.Now(),
-                lastUsed:  time.Now(),
-            }
+			rawConn, err := p.dialFunc(p.addr)
+			if err != nil {
+				atomic.AddInt32(&p.activeCount, -1)
+				p.wg.Done()
+				atomic.AddUint64(&p.stats.Errors, 1)
+				p.mu.Lock()
+				p.cond.Signal()
+				p.mu.Unlock()
+				return nil, err
+			}
 
-            p.mu.Lock()
-            // 多路复用连接初始化
-            if p.isMux {
-                if p.muxConns == nil {
-                    p.muxConns = make(map[*PooledConn]*mutilpath.MuxConn)
-                    p.streamCount = make(map[*PooledConn]int)
-                }
-                muxConn := mutilpath.NewMuxConn(rawConn, 1000)
-                p.muxConns[pooledConn] = muxConn
-                p.streamCount[pooledConn] = 1 // 新连接默认1个流
+			pooledConn := &PooledConn{
+				conn:      rawConn,
+				createdAt: time.Now(),
+				lastUsed:  time.Now(),
+			}
+
+			p.mu.Lock()
+			// 多路复用连接初始化
+			if p.isMux {
+				if p.muxConns == nil {
+					p.muxConns = make(map[*PooledConn]*mutilpath.MuxConn)
+					p.streamCount = make(map[*PooledConn]int)
+				}
+				muxConn := mutilpath.NewMuxConn(rawConn, 1000)
+				p.muxConns[pooledConn] = muxConn
+				p.streamCount[pooledConn] = 1 // 新连接默认1个流
 				MuxConn2SequenceIDMap[muxConn] = muxConn.NextRequestID()
-                return muxConn, nil
-            }
-            p.mu.Unlock()
+				return muxConn, nil
+			}
+			p.mu.Unlock()
 
-            return &pooledConnWrapper{pooledConn, p}, nil
-        }
+			return &pooledConnWrapper{pooledConn, p}, nil
+		}
 
-        // 3. 无空闲且活跃连接达到最大数，检查活跃连接的多路复用能力（仅在多路复用模式下）
-        if p.isMux {
-            for pc, muxConn := range p.muxConns {
+		// 3. 无空闲且活跃连接达到最大数，检查活跃连接的多路复用能力（仅在多路复用模式下）
+		if p.isMux {
+			for pc, muxConn := range p.muxConns {
 				count := p.streamCount[pc]
-                if count < p.maxStreams {
-                    p.streamCount[pc]++
-                    atomic.AddInt32(&p.activeCount, 1)
-                    pc.lastUsed = time.Now()
+				if count < p.maxStreams {
+					p.streamCount[pc]++
+					atomic.AddInt32(&p.activeCount, 1)
+					pc.lastUsed = time.Now()
 					MuxConn2SequenceIDMap[muxConn] = muxConn.NextRequestID()
-                    return p.muxConns[pc], nil
-                }
-            }
-        }
+					return p.muxConns[pc], nil
+				}
+			}
+		}
 
-        // 4. 处理连接池已满的情况
-        if p.maxWait > 0 {
-            // 检查是否已超时
-            if timer != nil && !timer.Stop() {
-                waitTime := time.Since(startWait)
-                return nil, fmt.Errorf("connection pool exhausted, wait timeout after %v", waitTime)
-            }	
-            // 记录超时统计
-            atomic.AddUint64(&p.stats.Timeouts, 1)
-            // 等待连接释放
-            p.cond.Wait()
-        } else {
-            // 无等待时间，直接返回错误
-            return nil, ErrPoolExhausted
-        }
-    }
+		// 4. 处理连接池已满的情况
+		if p.maxWait > 0 {
+			// 检查是否已超时
+			if timer != nil && !timer.Stop() {
+				waitTime := time.Since(startWait)
+				return nil, fmt.Errorf("connection pool exhausted, wait timeout after %v", waitTime)
+			}
+			// 记录超时统计
+			atomic.AddUint64(&p.stats.Timeouts, 1)
+			// 等待连接释放
+			p.cond.Wait()
+		} else {
+			// 无等待时间，直接返回错误
+			return nil, ErrPoolExhausted
+		}
+	}
 }
 
 // 连接池获取连接
 // 对于多路复用连接muxConn，不再使用Put方式归还连接，而是直接close
 func (p *ConnPool) Put(conn net.Conn) {
+	if p.isMux {
+		p.PutMuxConn(conn)
+		return
+	}
 	pc, ok := conn.(*pooledConnWrapper)
 	if !ok {
 		conn.Close()
@@ -241,6 +245,45 @@ func (p *ConnPool) Put(conn net.Conn) {
 
 	pc.conn.lastUsed = time.Now()
 	p.idleConns = append(p.idleConns, pc.conn)
+	p.cond.Signal()
+}
+
+func (p *ConnPool) PutMuxConn(conn net.Conn) {
+	// 多路复用模式
+	muxConn, ok := conn.(*mutilpath.MuxConn)
+	if !ok {
+		conn.Close()
+		return
+	}
+	// 找到对应的 PooledConn
+	var pooled *PooledConn
+	for pc, mc := range p.muxConns {
+		if mc == muxConn {
+			pooled = pc
+			break
+		}
+	}
+	if pooled == nil {
+		muxConn.Close()
+		return
+	}
+	// 归还一个流
+	if p.streamCount[pooled] > 0 {
+		p.streamCount[pooled]--
+		atomic.AddInt32(&p.activeCount, -1)
+		p.wg.Done()
+	}
+	// 如果流为0，放回空闲池
+	if p.streamCount[pooled] == 0 {
+		pooled.lastUsed = time.Now()
+		if len(p.idleConns) < p.maxIdle && !p.closing && !p.closed {
+			p.idleConns = append(p.idleConns, pooled)
+		} else {
+			muxConn.Close()
+			delete(p.muxConns, pooled)
+			delete(p.streamCount, pooled)
+		}
+	}
 	p.cond.Signal()
 }
 
@@ -384,6 +427,6 @@ func (p *ConnPool) cleanIdle() {
 	p.cond.Broadcast()
 }
 
-func (p *ConnPool) GetSequenceIDByMuxConn(conn net.Conn) (uint32) {
+func (p *ConnPool) GetSequenceIDByMuxConn(conn net.Conn) uint32 {
 	return uint32(MuxConn2SequenceIDMap[conn])
 }
