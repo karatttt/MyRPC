@@ -4,6 +4,7 @@
 package poller
 
 import (
+	"fmt"
 	"syscall"
 	"unsafe"
 )
@@ -22,16 +23,28 @@ const EPOLLET = 1 << 31 // 兼容 Windows 下开发，Linux 下会被系统常�
 
 type PollEvent = int
 
-type Poll interface{
+type Poll interface {
 	// Control controls the file descriptor operator with the specified event.
 	Control(operator *FDOperator, event PollEvent) error
-	
+
 	Wait() error // Wait blocks until an event occurs on the file descriptor.
 }
 
 type defaultPoll struct {
 	fd        int
 	operators map[int]*FDOperator
+}
+
+func NewDefaultPoll() (*defaultPoll, error) {
+	fmt.Println("Creating default poller")
+	epfd, err := syscall.EpollCreate1(0)
+	if err != nil {
+		return nil, err
+	}
+	return &defaultPoll{
+		fd:        epfd,
+		operators: make(map[int]*FDOperator),
+	}, nil
 }
 
 func (p *defaultPoll) setOperator(ptr unsafe.Pointer, op *FDOperator) {
@@ -70,4 +83,35 @@ func (p *defaultPoll) Control(operator *FDOperator, event PollEvent) error {
 	}
 	evt.Fd = int32(fd)
 	return EpollCtl(p.fd, op, fd, &evt)
+}
+
+func (p *defaultPoll) Wait() error {
+	events := make([]syscall.EpollEvent, 128)
+	for {
+		n, err := syscall.EpollWait(p.fd, events, -1)
+		if err != nil {
+			if err == syscall.EINTR {
+				continue
+			}
+			return err
+		}
+		for i := 0; i < n; i++ {
+			fd := int(events[i].Fd)
+			op := p.operators[fd]
+			if op == nil {
+				continue
+			}
+			evt := events[i].Events
+			if evt&(syscall.EPOLLIN|syscall.EPOLLPRI) != 0 && op.OnRead != nil {
+				_ = op.OnRead(op.Conn)
+				if op.Type == ConnectionType {
+					// 关闭该事件，避免LT模式持续onRead
+					_ = p.Control(op, PollDetach)
+				}
+			}
+			if evt&(syscall.EPOLLOUT) != 0 && op.OnWrite != nil {
+				_ = op.OnWrite(op)
+			}
+		}
+	}
 }

@@ -69,7 +69,6 @@ func NewConnPool(addr string, maxActive, maxIdle int, idleTimeout, maxWait time.
 }
 func (p *ConnPool) Get() (net.Conn, error) {
 	p.mu.Lock()
-	defer p.mu.Unlock()
 
 	if p.closed {
 		return nil, ErrPoolClosed

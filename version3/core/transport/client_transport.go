@@ -41,7 +41,8 @@ func (c *clientTransport) Send(ctx context.Context, reqBody interface{}, rspBody
 	}
 
 	// 获取连接
-	conn, ctx, err := fetchConn(ctx, opt)
+	conn, ctx, pool, err := fetchConn(ctx, opt)
+	defer pool.Put(conn)
 	if err != nil {
 		return &common.RPCError{
 			Code:    common.ErrCodeNetwork,
@@ -161,26 +162,24 @@ func (c *clientTransport) tcpReadFrame(ctx context.Context, conn net.Conn) ([]by
 	return codec.ReadFrame(conn)
 }
 
-func fetchConn(ctx context.Context, opt *ClientTransportOption) (conn net.Conn, ctxRes context.Context, err error) {
+func fetchConn(ctx context.Context, opt *ClientTransportOption) (conn net.Conn, ctxRes context.Context, poolRes *pool.ConnPool, err error) {
 	if !opt.MuxOpen {
-		pool := pool.GetPoolManager().GetPool(opt.Address, 1000, 1000, 60*time.Second, 60*time.Second, false)
-		conn, err := pool.Get()
+		poolRes := pool.GetPoolManager().GetPool(opt.Address, 1000, 1000, 60*time.Second, 60*time.Second, false)
+		conn, err := poolRes.Get()
 		if err != nil {
-			return nil, ctx, err
+			return nil, ctx, poolRes, err
 		}
-		defer pool.Put(conn)
+		return conn, ctx, poolRes, nil
 	} else {
-		pool := pool.GetPoolManager().GetPool(opt.Address, 8, 8, 60*time.Second, 60*time.Second, true)
-		conn, err := pool.Get()
+		poolRes := pool.GetPoolManager().GetPool(opt.Address, 8, 8, 60*time.Second, 60*time.Second, true)
+		conn, err := poolRes.Get()
 		if err != nil {
-			return nil, ctx, err
+			return nil, ctx, poolRes, err
 		}
-		defer pool.Put(conn)
 		// 获取msg，开启mux，并设置sequenceID
 		ctx, msg := internel.GetMessage(ctx)
 		msg.WithMuxOpen(opt.MuxOpen)
-		msg.WithSequenceID(pool.GetSequenceIDByMuxConn(conn))
-		return conn, ctx, nil
+		msg.WithSequenceID(poolRes.GetSequenceIDByMuxConn(conn))
+		return conn, ctx, poolRes, nil
 	}
-	return nil, ctx, fmt.Errorf("failed to get connection")
 }

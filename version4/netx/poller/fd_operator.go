@@ -6,17 +6,26 @@ package poller
 import (
 	"MyRPC/netx/linkBuffer"
 	"sync/atomic"
+	"net"
+)
+const (
+	ListenerType = iota // 0: listener
+	ConnectionType        // 1: connection
 )
 
 // FDOperator is a collection of operations on file descriptors.
 type FDOperator struct {
+	 
+	Conn net.Conn // Conn is the connection associated with the file descriptor.
 	// FD is file descriptor, poll will bind when register.
 	FD int
 
+	Type int // listener or connection, used to distinguish the type of file descriptor.
+
 	// The FDOperator provides three operations of reading, writing, and hanging.
 	// The poll actively fire the FDOperator when fd changes, no check the return value of FDOperator.
-	OnRead  func() error
-	OnWrite func() error
+	OnRead  func(conn net.Conn, ) error
+	OnWrite func(op *FDOperator) error
 	OnHup   func() error
 
 	// The following is the required fn, which must exist when used, or directly panic.
