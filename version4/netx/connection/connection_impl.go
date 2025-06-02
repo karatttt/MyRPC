@@ -1,7 +1,7 @@
 package connection
 
 import (
-	"MyRPC/netx/linkBuffer"
+	"MyRPC/netx/buffer"
 	"fmt"
 	"net"
 	"time"
@@ -10,8 +10,8 @@ import (
 // connection is the implement of Connection
 type connection struct {
 	rawConn      net.Conn // The underlying net.Conn
-	inputBuffer  *linkBuffer.Buffer
-	outputBuffer *linkBuffer.Buffer
+	inputBuffer  *buffer.Buffer
+	outputBuffer *buffer.Buffer
 
 	maxSize      int           // The maximum size of data between two Release().
 	bookSize     int           // The size of data that can be read at once.
@@ -29,8 +29,8 @@ func InitConn(conn net.Conn) Connection {
 		maxSize:  1024 * 1024, // Default max size is 1MB
 		bookSize: 4096,        // Default book size is 4KB
 	}
-	c.inputBuffer = linkBuffer.NewBuffer()
-	c.outputBuffer = linkBuffer.NewBuffer()
+	c.inputBuffer = buffer.NewBuffer()
+	c.outputBuffer = buffer.NewBuffer()
 
 	// Set the connection as active
 	c.isActive = true

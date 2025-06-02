@@ -35,7 +35,7 @@ func main() {
 			fmt.Println("Context cancelled, exiting...")
 			return
 		default:
-			c := pb.NewHelloAsyncClientProxy(client.WithTarget("114.55.253.201:8001"), client.WithRetryTimes(2), client.WithTimeout(2*time.Second))
+			c := pb.NewHelloAsyncClientProxy(client.WithTarget("127.0.0.1:8001"), client.WithRetryTimes(2), client.WithTimeout(2*time.Second))
 			if c == nil {
 				fmt.Println("Failed to create client")
 				return

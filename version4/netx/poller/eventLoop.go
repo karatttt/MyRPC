@@ -73,7 +73,6 @@ func getListenerFD(ln net.Listener) (fd uintptr, err error) {
 
 // 每一个事件循环中一定有listen连接的事件，当事件就绪的时候就调用这个函数
 func (evl *eventLoop) ListenerOnRead(conn net.Conn) error {
-
 	conn, err := evl.ln.Accept()
 	if err != nil {
 		// 非阻塞下 accept 没有新连接时返回
@@ -92,7 +91,6 @@ func (evl *eventLoop) ListenerOnRead(conn net.Conn) error {
 		conn.Close()
 
 	}
-
 	rawConn, ok := conn.(syscall.Conn)
 	if !ok {
 		// 不是 syscall.Conn，不能获取 fd
@@ -126,10 +124,9 @@ func (evl *eventLoop) ListenerOnRead(conn net.Conn) error {
 	}
 	fmt.Printf("Registered new connection with FD: %d\n", fd)
 	return nil
-
 }
 
-// TODO
+
 // 1. netpoll现在是客户端自己编解码，然后这样触发Onrequest：
 // for {
 // 	closedBy = c.status(closing)

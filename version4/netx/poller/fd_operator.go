@@ -4,7 +4,7 @@
 package poller
 
 import (
-	"MyRPC/netx/linkBuffer"
+	"MyRPC/netx/buffer"
 	"sync/atomic"
 	"net"
 )
@@ -30,11 +30,11 @@ type FDOperator struct {
 
 	// The following is the required fn, which must exist when used, or directly panic.
 	// Fns are only called by the poll when handles connection events.
-	Input   *linkBuffer.Buffer // Input is the input buffer, which is used to read data from the file descriptor.
+	Input   *buffer.Buffer // Input is the input buffer, which is used to read data from the file descriptor.
 	InputAck func(n int) (err error)
 
 	// Outputs will locked if len(rs) > 0, which need unlocked by OutputAck.
-	Output   *linkBuffer.Buffer 
+	Output   *buffer.Buffer 
 	OutputAck func(n int) (err error)
 
 	// poll is the registered location of the file descriptor.

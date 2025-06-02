@@ -34,7 +34,7 @@ func main() {
 
 	printMemStats("Before requests")
 
-	const N = 10000
+	const N = 100
 	start := time.Now()
 	for i := 0; i < N; i++ {
 		wg.Add(1)
