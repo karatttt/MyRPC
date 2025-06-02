@@ -5,7 +5,7 @@
 [Version3--异步调用与多路复用实现](#Version3)
 
 [Version4--gonet网络框架重构+聚集发包](#Version4)
-	
+
 # Version1	
 希望借助手写这个go的中间件项目，能够理解go语言的特性以及用go写中间件的优势之处，同时也是为了更好的使用和优化公司用到的trpc，并且作者之前也使用过grpc并有一定的兴趣，所以打算从0构建一个rpc系统，对于生产环境已经投入使用的项目抽丝剥茧后，再从0构建，从而更好的理解这个项目和做一个RPC需要注意的地方
 
@@ -284,17 +284,7 @@ func (t *serverTransport) handleConnection(ctx context.Context, conn net.Conn) {
 4. 把业务返回结果序列化
 5. 编码生成frame返回给调用方
 
-首先设计**Frame结构**如下：
-+----------------------+--------------------+-------------------+
-|       帧头 (16B)      |   协议数据 (N Bytes) |   消息体 (M Bytes) |
-+----------------------+--------------------+-------------------+
-
-**帧头 (16字节) 详细拆分**：
-+------------+---------+-------------+------------+-----------------+--------------+
-| MagicNumber| Version | MessageType | SequenceID | ProtocolLength  |  BodyLength  |
-|  (2 Bytes)       | (1Byte) |   (1Byte)          |  (4 Bytes)     |    (4 Bytes)         |   (4 Bytes)  |
-+------------+---------+-------------+------------+-----------------+--------------+
-
+![alt text](images/image6.png)
 **协议数据**：
 - 由 ProtocolData.Serialize() 生成
 - 包含 ServiceName、MethodName
